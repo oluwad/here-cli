@@ -564,10 +564,11 @@ program
                 console.log("Creating hexbins for the space data");
                 do {
                     let jsonOut = await getSpaceDataFromXyz(id, options);
-                    if(jsonOut.features && jsonOut.features.length === 0 && options.handle == 0){
-                        console.log("No features are available to create hexbins (only points are supported)");
-                        process.exit();
-                    }
+// getting errors on spaces with just points, testing              
+//                     if(jsonOut.features && jsonOut.features.length === 0 && options.handle == 0){
+//                         console.log("No features are available to create hexbins (only points are supported)");
+//                         process.exit();
+//                     }
                     cHandle = jsonOut.handle;
                     options.handle = jsonOut.handle;
                     if (jsonOut.features) {
