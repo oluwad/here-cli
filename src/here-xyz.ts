@@ -1187,6 +1187,8 @@ program
     .option('-d, --delimiter [,]', 'alternate delimiter used in csv', ',')
     .option('-q, --quote ["]', 'quote used in csv', '"')
     .option('-e, --errors', 'print data upload errors')
+    .option('--fastcsv', 'upload using fast-csv library - default')
+    .option('--csvparse', 'upload using csv-parse library')
     .option('--string-fields <stringFields>', 'comma seperated property names which needs to be converted as String even though they are numbers or boolean e.g. postal code')
     .action(async function (id, options) {
         if (!id && options.file) {
@@ -1377,7 +1379,7 @@ async function uploadToXyzSpace(id: string, options: any) {
                 let result = await transform.read(
                     options.file,
                     true,
-                    { headers: true, delimiter: options.delimiter, quote: options.quote }
+                    { headers: true, delimiter: options.delimiter, quote: options.quote, csvparse: options.csvparse }
                 );
                 const object = {
                     features: await transform.transform(

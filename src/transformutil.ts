@@ -33,7 +33,8 @@ import { requestAsync } from "./requestAsync";
 import * as proj4 from "proj4";
 import * as inquirer from "inquirer";
 import { deprecate } from "util";
-import * as csv from 'fast-csv';
+import * as fastcsv from 'fast-csv';
+const parse = require('csv-parse')
 
 const latArray = ["y", "ycoord", "ycoordinate", "coordy", "coordinatey", "latitude", "lat"];
 const lonArray = ["x", "xcoord", "xcoordinate", "coordx", "coordinatex", "longitude", "lon", "lng", "long", "longitud"];
@@ -172,11 +173,19 @@ async function dataToJson(file_data: string, opt: any = null) {
 
 async function parseCsv(csvStr: string, options: any) {
     return new Promise<any[]>((res, rej) => {
-        const rows:any[] = [];
-        csv.parseString(csvStr, options)
-            .on('data', (row: any) => rows.push(row))
-            .on('error', (err: any) => rej(err))
-            .on('end', () => res(rows));
+        let rows:any[] = [];
+        if(options.csvparse){
+            console.log("Using csv-parse library");
+            const parse = require('csv-parse/lib/sync');
+            rows = parse(csvStr,{headers : true, delimiter: options.delimiter, quote: options.quote, columns:true,skip_lines_with_error: true});
+            res(rows);
+        } else {
+            console.log("Using fast-csv library");
+            fastcsv.parseString(csvStr, options)
+                .on('data', (row: any) => rows.push(row))
+                .on('error', (err: any) => rej(err))
+                .on('end', () => res(rows));
+        }
     });
 }
 
@@ -428,34 +437,82 @@ export function readCSVAsChunks(incomingPath: string, chunckSize:number,options:
     return readData(incomingPath, 'csv').then(path => {
         return new Promise((resolve, reject) => {
             let dataArray = new Array<any>();
-            var csv = require("fast-csv");
             var stream = fs.createReadStream(path);
-            let csvstream = csv.parseStream(stream, {headers : true, delimiter: options.delimiter, quote: options.quote}).on("data", async function(data:any){
-                if(!isQuestionAsked){
-                    csvstream.pause();
-                    await toGeoJsonFeature(data, options, true);//calling this to ask Lat Lon question to the user for only one time
-                    isQuestionAsked = true;
-                    csvstream.resume();
-                }
-                dataArray.push(data);
-                if(dataArray.length >=chunckSize){
-                    //console.log('dataArray '+chunckSize);
-                    csvstream.pause();
-                    (async()=>{
-                        await streamFuntion(dataArray);
+            let csvstream: any;
+            console.log("options.csvparse - " + options.csvparse);
+            if(options.csvparse){
+                console.log("Using csv-parse library");
+                csvstream = stream.pipe(parse({headers : true, delimiter: options.delimiter, quote: options.quote, columns:true,skip_lines_with_error: true})).on("data", async function(data:any){
+                    if(!isQuestionAsked){
+                        stream.pause();
+                        csvstream.pause();
+                        await toGeoJsonFeature(data, options, true);//calling this to ask Lat Lon question to the user for only one time
+                        isQuestionAsked = true;
                         csvstream.resume();
-                        dataArray=new Array<any>();
+                        stream.resume();
+                    }
+                    dataArray.push(data);
+                    if(dataArray.length >=chunckSize){
+                        //console.log('dataArray '+chunckSize);
+                        stream.pause();
+                        csvstream.pause();
+                        (async()=>{
+                            await streamFuntion(dataArray);
+                            dataArray=new Array<any>();
+                            csvstream.resume();
+                            stream.resume();
+                        })();
+                    }
+                }).on("end", function(){
+                    (async()=>{
+                        const queue = await streamFuntion(dataArray);
+                        await queue.shutdown();
+                        options.totalCount = queue.uploadCount;
+                        console.log("");
+                        resolve();
                     })();
-                }
-            }).on("end", function(){
-                (async()=>{
-                    const queue = await streamFuntion(dataArray);
-                    await queue.shutdown();
-                    options.totalCount = queue.uploadCount;
-                    console.log("");
-                    resolve();
-                })();
-            });
+                }).on('error', function (err:any) {
+                    console.log("\nError in csv reading - " + err);
+                    throw err;
+                }).on('skip', function(err: any){
+                    console.log("\nSkip in csv reading - " + err);
+                });    
+            } else {
+                console.log("Using fast-csv library");
+                csvstream = fastcsv.parseStream(stream, {headers : true, delimiter: options.delimiter, quote: options.quote}).on("data", async function(data:any){
+                    if(!isQuestionAsked){
+                        stream.pause();
+                        csvstream.pause();
+                        await toGeoJsonFeature(data, options, true);//calling this to ask Lat Lon question to the user for only one time
+                        isQuestionAsked = true;
+                        csvstream.resume();
+                        stream.resume();
+                    }
+                    dataArray.push(data);
+                    if(dataArray.length >=chunckSize){
+                        //console.log('dataArray '+chunckSize);
+                        stream.pause();
+                        csvstream.pause();
+                        (async()=>{
+                            await streamFuntion(dataArray);
+                            dataArray=new Array<any>();
+                            csvstream.resume();
+                            stream.resume();
+                        })();
+                    }
+                }).on("end", function(){
+                    (async()=>{
+                        const queue = await streamFuntion(dataArray);
+                        await queue.shutdown();
+                        options.totalCount = queue.uploadCount;
+                        console.log("");
+                        resolve();
+                    })();
+                }).on('error', function (err:any) {
+                    console.log("\nError in csv reading - " + err);
+                    throw err;
+                });
+            }
         });
     });
 }
