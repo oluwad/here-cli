@@ -1220,39 +1220,15 @@ async function printDeleteWarning(id: string, options: any) {
 
 program
     .command("token")
-    .description("list all XYZ tokens ")
-    .action(() => {
-        listTokens().catch((error) => {
+    .description("list XYZ tokens ")
+    .option("--current", "show only the token being used currently")
+    .action((options) => {
+        listTokens(options).catch((error) => {
             handleError(error);
         })
     });
 
-async function listTokens() {
-    const dataStr = await common.decryptAndGet(
-        "accountInfo",
-        "No here account configure found. Try running 'here configure account'"
-    );
-    const appInfo = common.getSplittedKeys(dataStr);
-    if (!appInfo) {
-        throw new Error("Account information out of date. Please re-run 'here configure'");
-    }
-
-    const cookie = await sso.executeWithCookie(appInfo[0], appInfo[1]);
-    const options = {
-        url: common.xyzRoot() + "/token-api/token",
-        method: "GET",
-        headers: {
-            Cookie: cookie
-        }
-    };
-
-    const { response, body } = await requestAsync(options);
-    if (response.statusCode != 200) {
-        console.log("Error while fetching maxrights :" + body);
-        return;
-    }
-
-    const tokenInfo = JSON.parse(body);
+async function listTokens(options:any) {
     const currentToken = await common.decryptAndGet("keyInfo", "No token found");
     console.log(
         "===================================================="
@@ -1261,7 +1237,36 @@ async function listTokens() {
     console.log(
         "===================================================="
     );
-    common.drawNewTable(tokenInfo.tokens, ["id", "type", "iat", "description"], [25, 10, 10, 70]);
+
+    if(!options.current) {
+        const dataStr = await common.decryptAndGet(
+            "accountInfo",
+            "No here account configure found. Try running 'here configure account'"
+        );
+
+        const appInfo = common.getSplittedKeys(dataStr);
+        if (!appInfo) {
+            throw new Error("Account information out of date. Please re-run 'here configure'");
+        }
+        const cookie = await sso.executeWithCookie(appInfo[0], appInfo[1]);
+        const req_options = {
+            url: common.xyzRoot() + "/token-api/token",
+            method: "GET",
+            headers: {
+                Cookie: cookie
+            }
+        };
+
+        const { response, body } = await requestAsync(req_options);
+        if (response.statusCode != 200) {
+            console.log("Error while fetching maxrights :" + body);
+            return;
+        }
+
+        const tokenInfo = JSON.parse(body);
+        
+        common.drawNewTable(tokenInfo.tokens, ["id", "type", "iat", "description"], [25, 10, 10, 70]);
+    }
 }
 
 program
